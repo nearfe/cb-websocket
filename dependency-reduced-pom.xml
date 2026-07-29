@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.cheatbreaker</groupId>
+  <artifactId>cb-websocket-server</artifactId>
+  <name>CheatBreaker WebSocket Server</name>
+  <version>1.0-SNAPSHOT</version>
+  <description>Reconstructed WebSocket server for CheatBreaker 1.7.10 client - cosmetics, voice chat, friends, emotes</description>
+  <build>
+    <plugins>
+      <plugin>
+        <artifactId>maven-shade-plugin</artifactId>
+        <version>3.5.0</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals>
+              <goal>shade</goal>
+            </goals>
+            <configuration>
+              <transformers>
+                <transformer>
+                  <mainClass>com.cheatbreaker.server.WebSocketServer</mainClass>
+                </transformer>
+              </transformers>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+  <properties>
+    <gson.version>2.10.1</gson.version>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.source>8</maven.compiler.source>
+    <netty.version>4.1.97.Final</netty.version>
+    <maven.compiler.target>8</maven.compiler.target>
+  </properties>
+</project>

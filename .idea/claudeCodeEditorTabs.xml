@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ClaudeCodeEditorTabs">
+    <option name="activeSessionId" value="19a47ec5-1371-440d-bc76-1f67f203c50d" />
+    <option name="openSessionIds">
+      <list>
+        <option value="19a47ec5-1371-440d-bc76-1f67f203c50d" />
+      </list>
+    </option>
+    <option name="sessionPaths">
+      <map>
+        <entry key="19a47ec5-1371-440d-bc76-1f67f203c50d" value="/sessions/43e66c18-457a-4958-9252-d3158f58914d" />
+      </map>
+    </option>
+    <option name="sessionTitles">
+      <map>
+        <entry key="19a47ec5-1371-440d-bc76-1f67f203c50d" value="incompatible types: java.lang.Class cannot be conv" />
+      </map>
+    </option>
+  </component>
+</project>
