@@ -20,7 +20,7 @@ public class SessionManager {
     private final Map<Channel, Session> sessionsByChannel = new ConcurrentHashMap<>();
     private final Map<String, Set<String>> friendRelations = new ConcurrentHashMap<>();
     private final Map<String, String> playerServers = new ConcurrentHashMap<>();
-    private final Map<String, String> playerCosmetics = new ConcurrentHashMap<>();
+    private final Map<String, List<WSPacketCosmetics.CosmeticData>> playerCosmetics = new ConcurrentHashMap<>();
     private final Map<String, Set<Integer>> playerEmotes = new ConcurrentHashMap<>();
     private final Map<String, String> usernameToPlayerId = new ConcurrentHashMap<>();
 
@@ -115,14 +115,23 @@ public class SessionManager {
         return playerServers.getOrDefault(playerId, "unknown");
     }
 
-    // --- Cosmetics ---
+    // --- Cosmetics (binary format) ---
 
-    public void setPlayerCosmetics(String playerId, String cosmeticsJson) {
-        playerCosmetics.put(playerId, cosmeticsJson);
+    public void setPlayerCosmetics(String playerId, List<WSPacketCosmetics.CosmeticData> cosmetics) {
+        playerCosmetics.put(playerId, cosmetics);
     }
 
-    public String getPlayerCosmetics(String playerId) {
-        return playerCosmetics.get(playerId);
+    public List<WSPacketCosmetics.CosmeticData> getPlayerCosmetics(String playerId) {
+        return playerCosmetics.getOrDefault(playerId, Collections.emptyList());
+    }
+
+    /**
+     * Builds and returns a WSPacketCosmetics for the given player, ready to send to friends.
+     */
+    public WSPacketCosmetics buildCosmeticsPacket(String playerId) {
+        Session session = getSession(playerId);
+        String username = (session != null && session.getUsername() != null) ? session.getUsername() : "Unknown";
+        return new WSPacketCosmetics(playerId, username, false, 0, 0, getPlayerCosmetics(playerId));
     }
 
     // --- Emote management ---

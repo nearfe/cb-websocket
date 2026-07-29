@@ -5,14 +5,16 @@ import io.netty.buffer.Unpooled;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 
 /**
  * Server-side equivalent of Minecraft's PacketBuffer.
  * Wraps a Netty ByteBuf and provides the same read/write methods
  * the CheatBreaker client uses for WebSocket packet serialization.
  *
- * String format: [short length][UTF-8 bytes]
+ * String format: [VarInt length][UTF-8 bytes]  (matches Minecraft 1.7.10 PacketBuffer)
  * Blob format: [short length][raw bytes]
+ * UUID format: [long mostSigBits][long leastSigBits]  (matches Minecraft 1.7.10 PacketBuffer)
  */
 public class PacketBuffer {
 
@@ -32,12 +34,12 @@ public class PacketBuffer {
 
     public void writeStringToBuffer(String value) {
         byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
-        this.buf.writeShort(bytes.length);
+        this.writeVarInt(bytes.length);
         this.buf.writeBytes(bytes);
     }
 
     public String readStringFromBuffer(int maxLength) throws IOException {
-        int length = this.buf.readShort();
+        int length = this.readVarInt();
         if (length < 0) {
             throw new IOException("String length was negative: " + length);
         }
@@ -89,6 +91,19 @@ public class PacketBuffer {
 
     public void writeBytes(byte[] data) { this.buf.writeBytes(data); }
     public void readBytes(byte[] dest) { this.buf.readBytes(dest); }
+
+    // --- UUID (matches Minecraft 1.7.10 PacketBuffer.writeUUID/readUUID) ---
+
+    public void writeUUID(UUID uuid) {
+        this.buf.writeLong(uuid.getMostSignificantBits());
+        this.buf.writeLong(uuid.getLeastSignificantBits());
+    }
+
+    public UUID readUUID() {
+        long most = this.buf.readLong();
+        long least = this.buf.readLong();
+        return new UUID(most, least);
+    }
 
     // --- VarInt (Minecraft-style, matches client's writeVarIntToBuffer/readVarIntFromBuffer) ---
 

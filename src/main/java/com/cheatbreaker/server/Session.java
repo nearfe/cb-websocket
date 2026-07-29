@@ -8,7 +8,7 @@ import org.slf4j.LoggerFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -108,7 +108,7 @@ public class Session {
     }
 
     private void sendInitialData() {
-        // Send cosmetics (including owned emotes)
+        // Send cosmetics (including owned emotes) in binary format
         sendUpdatedCosmetics();
 
         // Send friends list
@@ -117,38 +117,77 @@ public class Session {
         LOGGER.info("Initial data sent to player {} ({})", username, playerId);
     }
 
+    /**
+     * Sends the player's full cosmetics list (normal cosmetics + emotes) in binary format.
+     * The client's WSPacketCosmetics.read() expects:
+     *   [string playerId][int size][per-cosmetic: long time, float scale, boolean active,
+     *    string resourceLocation, string name, string type][string username][boolean join][int color][int color2]
+     *
+     * For emotes, the client does:
+     *   if (type.getTypeName().equals("emote")) {
+     *       this.cosmetics.add(new Cosmetic(this.playerId, Integer.parseInt(name), type));
+     *   }
+     * So "name" must be the emote ID as a string.
+     */
     public void sendUpdatedCosmetics() {
-        java.util.Set<Integer> emotes = sessionManager.getPlayerEmotes(playerId);
-        StringBuilder json = new StringBuilder("[");
-        boolean first = true;
+        String uname = username != null ? username : "Unknown";
+
+        // Start with any normal cosmetics the player has sent previously
+        List<WSPacketCosmetics.CosmeticData> cosmeticsList = new ArrayList<>(
+            sessionManager.getPlayerCosmetics(playerId)
+        );
+
+        // Add emotes as cosmetic entries with type "emote"
+        Set<Integer> emotes = sessionManager.getPlayerEmotes(playerId);
         for (int emoteId : emotes) {
-            if (!first) json.append(",");
-            json.append("{\"playerId\":\"").append(playerId)
-                .append("\",\"emoteId\":").append(emoteId)
-                .append(",\"type\":\"emote\"}");
-            first = false;
+            cosmeticsList.add(new WSPacketCosmetics.CosmeticData(
+                0L,                         // lastUpdate (unused for emotes)
+                0.0f,                       // scale (unused for emotes)
+                false,                      // equipped (unused for emotes)
+                "",                         // location (unused for emotes)
+                String.valueOf(emoteId),    // name = emote ID as string (client does Integer.parseInt)
+                "emote"                     // type
+            ));
         }
-        json.append("]");
-        sendPacket(new WSPacketCosmetics(json.toString()));
+
+        // Client calls UUID.fromString(playerId) which requires dashed format
+        WSPacketCosmetics packet = new WSPacketCosmetics(
+            formatUuid(playerId), uname, false, 0, 0, cosmeticsList
+        );
+        sendPacket(packet);
+    }
+
+    /**
+     * Converts a 32-char hex UUID (no dashes) to standard dashed format.
+     * e.g. "90badd70e6734b69a5ecc8d8618a4e0b" -> "90badd70-e673-4b69-a5ec-c8d8618a4e0b"
+     * If already dashed or invalid, returns as-is.
+     */
+    private static String formatUuid(String id) {
+        if (id == null) return null;
+        if (id.contains("-")) return id;
+        if (id.length() != 32) return id;
+        return id.substring(0, 8) + "-" + id.substring(8, 12) + "-"
+             + id.substring(12, 16) + "-" + id.substring(16, 20) + "-"
+             + id.substring(20);
     }
 
     public void sendFriendsList() {
         if (playerId == null) return;
-        java.util.Set<String> friends = sessionManager.getFriends(playerId);
+        Set<String> friends = sessionManager.getFriends(playerId);
 
-        java.util.Map<String, java.util.List<String>> onlineFriends = new java.util.HashMap<>();
-        java.util.Map<String, java.util.List<String>> offlineFriends = new java.util.HashMap<>();
+        Map<String, List<String>> onlineFriends = new HashMap<>();
+        Map<String, List<String>> offlineFriends = new HashMap<>();
 
         for (String friendId : friends) {
             if (sessionManager.isOnline(friendId)) {
                 Session friendSession = sessionManager.getSession(friendId);
                 String server = sessionManager.getPlayerServer(friendId);
-                onlineFriends.put(friendId, java.util.Arrays.asList(
+                onlineFriends.put(friendId, Arrays.asList(
                     friendSession != null ? friendSession.getUsername() : "Unknown",
                     server
                 ));
             } else {
-                offlineFriends.put(friendId, java.util.Arrays.asList(
+                offlineFriends.put(friendId, Arrays.asList(
                     "Unknown",
                     String.valueOf(System.currentTimeMillis())
                 ));

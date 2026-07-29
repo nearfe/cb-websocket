@@ -109,8 +109,8 @@ public class CommandHandler implements Runnable {
                 sessionManager.addPlayerEmote(session.getPlayerId(), emoteId);
                 System.out.println("Granted emote '" + EmoteRegistry.getName(emoteId) + "' (id " + emoteId + ") to " + playerName);
 
-                // Send updated cosmetics/emotes to the player
-                sendUpdatedEmotes(session);
+                // Send updated cosmetics/emotes to the player in binary format
+                sendUpdatedCosmetics(session);
                 break;
             }
 
@@ -137,7 +137,7 @@ public class CommandHandler implements Runnable {
 
                 sessionManager.removePlayerEmote(session.getPlayerId(), emoteId);
                 System.out.println("Removed emote '" + EmoteRegistry.getName(emoteId) + "' from " + playerName);
-                sendUpdatedEmotes(session);
+                sendUpdatedCosmetics(session);
                 break;
             }
 
@@ -208,19 +208,59 @@ public class CommandHandler implements Runnable {
         }
     }
 
-    private void sendUpdatedEmotes(Session session) {
-        Set<Integer> emotes = sessionManager.getPlayerEmotes(session.getPlayerId());
-        StringBuilder json = new StringBuilder("[");
-        boolean first = true;
+    /**
+     * Sends the player's full cosmetics list (normal cosmetics + emotes) in binary format.
+     * The client's WSPacketCosmetics.read() expects:
+     *   [string playerId][int size][per-cosmetic: long time, float scale, boolean active,
+     *    string resourceLocation, string name, string type][string username][boolean join][int color][int color2]
+     *
+     * For emotes specifically, the client does:
+     *   if (type.getTypeName().equals("emote")) {
+     *       this.cosmetics.add(new Cosmetic(this.playerId, Integer.parseInt(name), type));
+     *   }
+     * So "name" must be the emote ID as a string.
+     */
+    private void sendUpdatedCosmetics(Session session) {
+        String playerId = session.getPlayerId();
+        String username = session.getUsername() != null ? session.getUsername() : "Unknown";
+
+        // Start with any normal cosmetics the player has sent previously
+        List<WSPacketCosmetics.CosmeticData> cosmeticsList = new ArrayList<>(
+            sessionManager.getPlayerCosmetics(playerId)
+        );
+
+        // Add emotes as cosmetic entries with type "emote"
+        Set<Integer> emotes = sessionManager.getPlayerEmotes(playerId);
         for (int emoteId : emotes) {
-            if (!first) json.append(",");
-            json.append("{\"playerId\":\"").append(session.getPlayerId())
-                .append("\",\"emoteId\":").append(emoteId)
-                .append(",\"type\":\"emote\"}");
-            first = false;
+            // For emotes: name = emoteId as string, type = "emote", other fields are unused
+            cosmeticsList.add(new WSPacketCosmetics.CosmeticData(
+                0L,          // lastUpdate (unused for emotes)
+                0.0f,        // scale (unused for emotes)
+                false,       // equipped (unused for emotes)
+                "",          // location (unused for emotes)
+                String.valueOf(emoteId),  // name = emote ID as string (client does Integer.parseInt)
+                "emote"      // type
+            ));
         }
-        json.append("]");
-        session.sendPacket(new WSPacketCosmetics(json.toString()));
+
+        // Client calls UUID.fromString(playerId) which requires dashed format
+        WSPacketCosmetics packet = new WSPacketCosmetics(
+            formatUuid(playerId), username, false, 0, 0, cosmeticsList
+        );
+        session.sendPacket(packet);
+    }
+
+    /**
+     * Converts a 32-char hex UUID (no dashes) to standard dashed format.
+     * e.g. "90badd70e6734b69a5ecc8d8618a4e0b" -> "90badd70-e673-4b69-a5ec-c8d8618a4e0b"
+     */
+    private static String formatUuid(String id) {
+        if (id == null) return null;
+        if (id.contains("-")) return id;
+        if (id.length() != 32) return id;
+        return id.substring(0, 8) + "-" + id.substring(8, 12) + "-"
+             + id.substring(12, 16) + "-" + id.substring(16, 20) + "-"
+             + id.substring(20);
     }
 
     private void handlePlayersCommand() {
