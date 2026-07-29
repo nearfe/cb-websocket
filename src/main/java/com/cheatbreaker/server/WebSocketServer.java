@@ -9,6 +9,10 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.FileInputStream;
+import java.io.InputStream;
+import java.util.Properties;
+
 /**
  * Reconstructed CheatBreaker WebSocket Server.
  * Handles client connections for cosmetics, friends, emotes, voice chat, and notifications.
@@ -22,13 +26,15 @@ public class WebSocketServer {
 
     private final int port;
     private final SessionManager sessionManager;
+    private final MongoStorage mongoStorage;
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
     private Thread commandThread;
 
-    public WebSocketServer(int port) {
+    public WebSocketServer(int port, MongoStorage mongoStorage) {
         this.port = port;
-        this.sessionManager = new SessionManager();
+        this.mongoStorage = mongoStorage;
+        this.sessionManager = new SessionManager(mongoStorage);
     }
 
     public void start() throws InterruptedException {
@@ -59,6 +65,7 @@ public class WebSocketServer {
     public void stop() {
         if (workerGroup != null) workerGroup.shutdownGracefully();
         if (bossGroup != null) bossGroup.shutdownGracefully();
+        if (mongoStorage != null) mongoStorage.close();
         LOGGER.info("Server stopped.");
     }
 
@@ -76,7 +83,28 @@ public class WebSocketServer {
             }
         }
 
-        WebSocketServer server = new WebSocketServer(port);
+        // Load MongoDB config from config.properties (falls back to defaults)
+        String mongoUri = "mongodb://localhost:27017";
+        String mongoDb = "tellinq";
+        try (InputStream in = new FileInputStream("config.properties")) {
+            Properties props = new Properties();
+            props.load(in);
+            mongoUri = props.getProperty("mongo.uri", mongoUri);
+            mongoDb = props.getProperty("mongo.db", mongoDb);
+            LOGGER.info("Loaded config.properties: mongo.uri={}, mongo.db={}", mongoUri, mongoDb);
+        } catch (Exception e) {
+            LOGGER.warn("config.properties not found, using defaults: {} / {}", mongoUri, mongoDb);
+        }
+
+        MongoStorage mongoStorage = null;
+        try {
+            mongoStorage = new MongoStorage(mongoUri, mongoDb);
+        } catch (Exception e) {
+            LOGGER.error("Failed to connect to MongoDB at {}. Emotes will NOT persist across restarts!", mongoUri, e);
+            LOGGER.error("Make sure MongoDB is running, or edit config.properties.");
+        }
+
+        WebSocketServer server = new WebSocketServer(port, mongoStorage);
         Runtime.getRuntime().addShutdownHook(new Thread(server::stop));
         server.start();
     }

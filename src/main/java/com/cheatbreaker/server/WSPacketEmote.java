@@ -6,10 +6,15 @@ import java.util.UUID;
 /**
  * Packet ID 39 - Shared: emote broadcast.
  * Client sends: [UUID playerId (16 bytes)][int emoteId]
- * Server relays to all friends of the sender.
+ * Server relays to the sender AND all friends of the sender.
  *
  * The client uses PacketBuffer.writeUUID/readUUID which writes 2 longs
  * (mostSignificantBits + leastSignificantBits) - NOT a string.
+ *
+ * The client's playEmote(Emote) only sends the packet to the server.
+ * The actual animation is activated when the client RECEIVES the
+ * WSPacketEmote back (via handleEmote -> playEmote(AbstractClientPlayer, Emote)).
+ * Therefore the server MUST echo the packet back to the sender.
  *
  * Emote IDs (from client EmoteManager):
  *   0=wave, 1=handsup, 2=floss, 3=dab, 4=tpose,
@@ -43,8 +48,11 @@ public class WSPacketEmote extends WSPacket {
 
     @Override
     public void handle(Session session) {
-        session.getSessionManager().broadcastToFriends(session.getPlayerId(),
-            new WSPacketEmote(session.getPlayerId(), emoteId));
+        WSPacketEmote emotePacket = new WSPacketEmote(session.getPlayerId(), emoteId);
+        // Send back to the sender so their client activates the animation locally
+        session.sendPacket(emotePacket);
+        // Relay to friends so they see the emote too
+        session.getSessionManager().broadcastToFriends(session.getPlayerId(), emotePacket);
     }
 
     /**

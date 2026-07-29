@@ -41,6 +41,13 @@
             <version>32.1.2-jre</version>
         </dependency>
 
+        <!-- MongoDB Java Driver -->
+        <dependency>
+            <groupId>org.mongodb</groupId>
+            <artifactId>mongodb-driver-sync</artifactId>
+            <version>4.11.1</version>
+        </dependency>
+
         <!-- SLF4J + Logback for logging -->
         <dependency>
             <groupId>org.slf4j</groupId>

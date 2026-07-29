@@ -11,6 +11,7 @@ import java.util.stream.Collectors;
 /**
  * Manages all connected client sessions.
  * Tracks players by UUID, handles friend relationships, cosmetics, emotes, and server locations.
+ * Emotes are persisted to MongoDB (if available) so they survive server restarts.
  */
 public class SessionManager {
 
@@ -23,6 +24,11 @@ public class SessionManager {
     private final Map<String, List<WSPacketCosmetics.CosmeticData>> playerCosmetics = new ConcurrentHashMap<>();
     private final Map<String, Set<Integer>> playerEmotes = new ConcurrentHashMap<>();
     private final Map<String, String> usernameToPlayerId = new ConcurrentHashMap<>();
+    private final MongoStorage mongoStorage;
+
+    public SessionManager(MongoStorage mongoStorage) {
+        this.mongoStorage = mongoStorage;
+    }
 
     public Session createSession(Channel channel) {
         Session session = new Session(channel, this);
@@ -37,6 +43,16 @@ public class SessionManager {
             usernameToPlayerId.put(session.getUsername().toLowerCase(), playerId);
         }
         LOGGER.info("Player registered: {} ({})", session.getUsername(), playerId);
+
+        // Load persisted emotes from MongoDB
+        if (mongoStorage != null && session.getUsername() != null) {
+            List<Integer> savedEmotes = mongoStorage.loadEmotes(session.getUsername());
+            if (!savedEmotes.isEmpty()) {
+                Set<Integer> emoteSet = playerEmotes.computeIfAbsent(playerId, k -> ConcurrentHashMap.newKeySet());
+                emoteSet.addAll(savedEmotes);
+                LOGGER.info("Loaded {} emote(s) from database for {}", savedEmotes.size(), session.getUsername());
+            }
+        }
     }
 
     public void removeSession(Channel channel) {
@@ -134,11 +150,19 @@ public class SessionManager {
         return new WSPacketCosmetics(playerId, username, false, 0, 0, getPlayerCosmetics(playerId));
     }
 
-    // --- Emote management ---
+    // --- Emote management (persisted to MongoDB) ---
 
     public void addPlayerEmote(String playerId, int emoteId) {
         playerEmotes.computeIfAbsent(playerId, k -> ConcurrentHashMap.newKeySet()).add(emoteId);
         LOGGER.info("Emote {} granted to player {}", EmoteRegistry.getName(emoteId), playerId);
+
+        // Persist to MongoDB
+        if (mongoStorage != null) {
+            Session session = getSession(playerId);
+            if (session != null && session.getUsername() != null) {
+                mongoStorage.addEmote(session.getUsername(), emoteId);
+            }
+        }
     }
 
     public void removePlayerEmote(String playerId, int emoteId) {
@@ -146,6 +170,14 @@ public class SessionManager {
         if (emotes != null) {
             emotes.remove(emoteId);
             LOGGER.info("Emote {} removed from player {}", EmoteRegistry.getName(emoteId), playerId);
+        }
+
+        // Persist to MongoDB
+        if (mongoStorage != null) {
+            Session session = getSession(playerId);
+            if (session != null && session.getUsername() != null) {
+                mongoStorage.removeEmote(session.getUsername(), emoteId);
+            }
         }
     }
 
